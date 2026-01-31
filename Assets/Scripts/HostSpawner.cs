@@ -33,6 +33,9 @@ public class HostSpawner : MonoBehaviour
     [Tooltip("If true, assigns each FaceSnatcher camera to a host in its zone after spawning.")]
     public bool assignCamerasOnStart = true;
 
+    [Tooltip("Optional SnatcherManager. If set or found, will assign initial snatcher slots there instead of using local camera assignment.")]
+    public SnatcherManager snatcherManager;
+
     [Tooltip("If true, auto-find all FaceSnatcherCamera components in the scene.")]
     public bool autoFindCameras = true;
 
@@ -125,6 +128,12 @@ public class HostSpawner : MonoBehaviour
                 Debug.LogWarning($"{nameof(HostSpawner)}: Spawned host '{host.name}' has no HostWander component; cannot assign zone.");
             }
 
+            if (!host.TryGetComponent<HostState>(out var hostState))
+            {
+                hostState = host.AddComponent<HostState>();
+            }
+            hostState.zone = p.zone;
+
             // If it has a NavMeshAgent, warp it to be safe (prevents "not on navmesh" issues)
             if (snapToNavMesh && host.TryGetComponent<NavMeshAgent>(out var agent))
             {
@@ -137,7 +146,26 @@ public class HostSpawner : MonoBehaviour
 
         if (assignCamerasOnStart)
         {
-            AssignCamerasToHosts();
+            if (snatcherManager == null)
+            {
+                snatcherManager = FindFirstObjectByType<SnatcherManager>(FindObjectsInactive.Include);
+            }
+
+            if (snatcherManager != null)
+            {
+                snatcherManager.AssignInitialHosts(
+                    _spawnedHosts,
+                    redMaterial,
+                    yellowMaterial,
+                    greenMaterial,
+                    blueMaterial,
+                    humanZone,
+                    enableHumanControl);
+            }
+            else
+            {
+                AssignCamerasToHosts();
+            }
         }
     }
 
@@ -185,7 +213,7 @@ public class HostSpawner : MonoBehaviour
         if (autoFindCameras)
         {
             cameras.Clear();
-            cameras.AddRange(FindObjectsOfType<FaceSnatcherCamera>(true));
+            cameras.AddRange(FindObjectsByType<FaceSnatcherCamera>(FindObjectsInactive.Include, FindObjectsSortMode.None));
         }
 
         if (cameras.Count == 0)

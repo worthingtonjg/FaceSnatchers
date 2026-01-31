@@ -1,0 +1,485 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+[DisallowMultipleComponent]
+public class SnatcherManager : MonoBehaviour
+{
+    [System.Serializable]
+    public class SnatcherSlot
+    {
+        [Tooltip("Zone this snatcher owns (1-4).")]
+        public int zone = 1;
+        public bool isAlive = true;
+        public GameObject currentHost;
+        public Material material;
+        public bool isHuman;
+        public FaceSnatcherCamera camera;
+        [Tooltip("Seconds remaining before host decay kills this snatcher.")]
+        public float hostTimeRemaining;
+    }
+
+    [Header("Slots")]
+    public List<SnatcherSlot> slots = new List<SnatcherSlot>(4);
+
+    [Header("Host Decay")]
+    public bool hostDecayEnabled = true;
+    [Min(1f)] public float hostDecaySeconds = 12f;
+
+    [Header("AI")]
+    public GameObject aiMaskProjectilePrefab;
+    public float aiShotCooldown = 1.5f;
+    public float aiTargetMaxDistance = 25f;
+    public float aiShotMinDistance = 3f;
+    public float aiShotMaxDistance = 10f;
+    public float aiMaskShootSpeed = 14f;
+    public float aiMaskLifeSeconds = 6f;
+
+    [Header("Cameras")]
+    public bool autoFindCameras = true;
+
+    void Update()
+    {
+        if (!hostDecayEnabled) return;
+
+        for (int i = 0; i < slots.Count; i++)
+        {
+            var slot = slots[i];
+            if (slot == null) continue;
+            if (!slot.isAlive) continue;
+            if (slot.currentHost == null) continue;
+
+            slot.hostTimeRemaining -= Time.deltaTime;
+            if (slot.hostTimeRemaining <= 0f)
+            {
+                HandleHostDecay(slot);
+            }
+        }
+    }
+
+    public void AssignInitialHosts(
+        IReadOnlyList<GameObject> hosts,
+        Material redMaterial,
+        Material yellowMaterial,
+        Material greenMaterial,
+        Material blueMaterial,
+        int humanZone,
+        bool enableHumanControl)
+    {
+        EnsureDefaultSlots();
+        AssignCamerasToSlots();
+
+        var zoneHosts = new Dictionary<int, List<GameObject>>();
+        for (int i = 0; i < hosts.Count; i++)
+        {
+            var host = hosts[i];
+            if (host == null) continue;
+            if (!host.TryGetComponent<HostWander>(out var wander)) continue;
+
+            if (!zoneHosts.TryGetValue(wander.zone, out var list))
+            {
+                list = new List<GameObject>();
+                zoneHosts[wander.zone] = list;
+            }
+            list.Add(host);
+        }
+
+        foreach (var slot in slots)
+        {
+            if (slot == null) continue;
+
+            if (!zoneHosts.TryGetValue(slot.zone, out var candidates) || candidates.Count == 0)
+            {
+                if (slot.camera != null) slot.camera.SetTarget(null);
+                continue;
+            }
+
+            int pickIndex = Random.Range(0, candidates.Count);
+            var host = candidates[pickIndex];
+            candidates.RemoveAt(pickIndex);
+
+            slot.isAlive = true;
+            slot.currentHost = host;
+            slot.isHuman = enableHumanControl && slot.zone == humanZone;
+            slot.material = GetMaterialForZone(slot.zone, redMaterial, yellowMaterial, greenMaterial, blueMaterial);
+
+            var hostState = EnsureHostState(host);
+            if (host.TryGetComponent<HostWander>(out var wander))
+            {
+                hostState.zone = wander.zone;
+            }
+            hostState.SetPossessed(slot.zone);
+            slot.hostTimeRemaining = hostDecaySeconds;
+
+            ApplyPlayerMaterial(host, slot.material);
+            EnableMask(host);
+
+            if (host.TryGetComponent<HostWander>(out var hostWander))
+            {
+                hostWander.enabled = false;
+            }
+
+            if (slot.isHuman)
+            {
+                EnsureHumanController(host);
+            }
+            else
+            {
+                EnsureAIController(host, slot.zone);
+            }
+
+            if (slot.camera != null)
+            {
+                slot.camera.SetTarget(host.transform);
+            }
+        }
+    }
+
+    public void OnSnatcherShot(int snatcherZone)
+    {
+        var slot = GetSlotByZone(snatcherZone);
+        if (slot == null || slot.currentHost == null) return;
+
+        var host = slot.currentHost;
+        var hostState = EnsureHostState(host);
+        hostState.ClearPossessed();
+        hostState.SetClaimed(snatcherZone);
+
+        ApplyPlayerMaterial(host, slot.material);
+        DisableMask(host);
+        EnableHostWander(host, true);
+        if (slot.isHuman)
+        {
+            DisableHumanController(host);
+        }
+        else
+        {
+            DisableAIController(host);
+        }
+
+        slot.currentHost = null;
+    }
+
+    public bool PossessHost(int attackerZone, HostState hostState)
+    {
+        if (hostState == null) return false;
+        var attacker = GetSlotByZone(attackerZone);
+        if (attacker == null || !attacker.isAlive) return false;
+
+        if (hostState.currentSnatcherZone == attackerZone)
+        {
+            return false;
+        }
+
+        if (hostState.currentSnatcherZone == 0 && hostState.claimedByZone == attackerZone)
+        {
+            return false;
+        }
+
+        if (hostState.currentSnatcherZone != 0 && hostState.currentSnatcherZone != attackerZone)
+        {
+            KillSnatcher(hostState.currentSnatcherZone);
+        }
+
+        hostState.SetPossessed(attackerZone);
+        attacker.currentHost = hostState.gameObject;
+        attacker.hostTimeRemaining = hostDecaySeconds;
+
+        ApplyPlayerMaterial(hostState.gameObject, attacker.material);
+        EnableMask(hostState.gameObject);
+        EnableHostWander(hostState.gameObject, false);
+
+        if (attacker.isHuman)
+        {
+            EnsureHumanController(hostState.gameObject);
+        }
+        else
+        {
+            EnsureAIController(hostState.gameObject, attackerZone);
+        }
+
+        if (attacker.camera != null)
+        {
+            attacker.camera.SetTarget(hostState.transform);
+        }
+
+        return true;
+    }
+
+    public void KillSnatcher(int snatcherZone)
+    {
+        var slot = GetSlotByZone(snatcherZone);
+        if (slot == null || !slot.isAlive) return;
+
+        slot.isAlive = false;
+        slot.hostTimeRemaining = 0f;
+
+        if (slot.currentHost != null)
+        {
+            if (slot.isHuman)
+            {
+                DisableHumanController(slot.currentHost);
+            }
+            else
+            {
+                DisableAIController(slot.currentHost);
+            }
+        }
+
+        slot.currentHost = null;
+    }
+
+    public void SetCurrentHost(int zone, GameObject newHost)
+    {
+        var slot = GetSlotByZone(zone);
+        if (slot == null) return;
+
+        slot.currentHost = newHost;
+        if (slot.camera != null)
+        {
+            slot.camera.SetTarget(newHost != null ? newHost.transform : null);
+        }
+    }
+
+    public SnatcherSlot GetSlotByZone(int zone)
+    {
+        for (int i = 0; i < slots.Count; i++)
+        {
+            if (slots[i] != null && slots[i].zone == zone) return slots[i];
+        }
+        return null;
+    }
+
+    private void EnsureDefaultSlots()
+    {
+        if (slots.Count >= 4) return;
+        slots.Clear();
+        for (int i = 1; i <= 4; i++)
+        {
+            slots.Add(new SnatcherSlot { zone = i });
+        }
+    }
+
+    private void AssignCamerasToSlots()
+    {
+        if (!autoFindCameras) return;
+
+        var cams = FindObjectsByType<FaceSnatcherCamera>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < slots.Count; i++)
+        {
+            var slot = slots[i];
+            if (slot == null) continue;
+
+            for (int c = 0; c < cams.Length; c++)
+            {
+                if (cams[c] != null && cams[c].zone == slot.zone)
+                {
+                    slot.camera = cams[c];
+                    break;
+                }
+            }
+        }
+    }
+
+    private static Material GetMaterialForZone(
+        int zone,
+        Material redMaterial,
+        Material yellowMaterial,
+        Material greenMaterial,
+        Material blueMaterial)
+    {
+        return zone switch
+        {
+            1 => redMaterial,
+            2 => yellowMaterial,
+            3 => greenMaterial,
+            4 => blueMaterial,
+            _ => null
+        };
+    }
+
+    private static void ApplyPlayerMaterial(GameObject host, Material mat)
+    {
+        if (host == null || mat == null) return;
+
+        var renderers = host.GetComponentsInChildren<Renderer>(true);
+        if (renderers.Length == 0) return;
+
+        Transform maskRoot = FindChildByName(host.transform, "Mask");
+
+        foreach (var r in renderers)
+        {
+            if (maskRoot != null && r.transform.IsChildOf(maskRoot)) continue;
+            r.material = mat;
+        }
+    }
+
+    private static void EnableMask(GameObject host)
+    {
+        var mask = FindChildByName(host.transform, "Mask");
+        if (mask == null) return;
+        mask.gameObject.SetActive(true);
+    }
+
+    private static void DisableMask(GameObject host)
+    {
+        var mask = FindChildByName(host.transform, "Mask");
+        if (mask == null) return;
+        mask.gameObject.SetActive(false);
+    }
+
+    private static void EnableHostWander(GameObject host, bool enabled)
+    {
+        if (host == null) return;
+        if (host.TryGetComponent<HostWander>(out var wander))
+        {
+            wander.enabled = enabled;
+        }
+    }
+
+    private void HandleHostDecay(SnatcherSlot slot)
+    {
+        var host = slot.currentHost;
+        if (host == null)
+        {
+            slot.hostTimeRemaining = 0f;
+            return;
+        }
+
+        var state = EnsureHostState(host);
+        state.ClearPossessed();
+        state.isDead = true;
+
+        if (slot.isHuman)
+        {
+            DisableHumanController(host);
+        }
+        else
+        {
+            DisableAIController(host);
+        }
+        EnableMask(host);
+        DisableHostSystems(host);
+
+        slot.currentHost = null;
+        slot.isAlive = false;
+        slot.hostTimeRemaining = 0f;
+
+        // Optional: mark host dead visually or disable it later if desired.
+    }
+
+    private static void DisableHostSystems(GameObject host)
+    {
+        if (host == null) return;
+
+        if (host.TryGetComponent<HostWander>(out var wander))
+        {
+            wander.enabled = false;
+        }
+
+        if (host.TryGetComponent<UnityEngine.AI.NavMeshAgent>(out var agent))
+        {
+            agent.isStopped = true;
+            agent.enabled = false;
+        }
+
+        var colliders = host.GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            colliders[i].enabled = false;
+        }
+
+        var renderers = host.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            renderers[i].enabled = false;
+        }
+    }
+
+    private static void EnsureHumanController(GameObject host)
+    {
+        if (host == null) return;
+        if (!host.TryGetComponent<FaceSnatcherHumanController>(out var controller))
+        {
+            controller = host.AddComponent<FaceSnatcherHumanController>();
+        }
+        controller.enabled = true;
+
+        if (host.TryGetComponent<UnityEngine.AI.NavMeshAgent>(out var agent))
+        {
+            agent.isStopped = false;
+            agent.ResetPath();
+            agent.obstacleAvoidanceType = UnityEngine.AI.ObstacleAvoidanceType.NoObstacleAvoidance;
+            agent.avoidancePriority = 0;
+        }
+    }
+
+    private static void DisableHumanController(GameObject host)
+    {
+        if (host == null) return;
+        if (host.TryGetComponent<FaceSnatcherHumanController>(out var controller))
+        {
+            controller.enabled = false;
+        }
+
+        if (host.TryGetComponent<UnityEngine.AI.NavMeshAgent>(out var agent))
+        {
+            agent.isStopped = false;
+            agent.obstacleAvoidanceType = UnityEngine.AI.ObstacleAvoidanceType.MedQualityObstacleAvoidance;
+            agent.avoidancePriority = 50;
+        }
+    }
+
+    private void EnsureAIController(GameObject host, int ownerZone)
+    {
+        if (host == null) return;
+        if (!host.TryGetComponent<FaceSnatcherAIController>(out var controller))
+        {
+            controller = host.AddComponent<FaceSnatcherAIController>();
+        }
+
+        controller.enabled = true;
+        controller.Configure(
+            ownerZone,
+            this,
+            aiMaskProjectilePrefab,
+            aiMaskShootSpeed,
+            aiMaskLifeSeconds,
+            aiShotCooldown,
+            aiTargetMaxDistance,
+            aiShotMinDistance,
+            aiShotMaxDistance);
+
+        if (host.TryGetComponent<UnityEngine.AI.NavMeshAgent>(out var agent))
+        {
+            agent.isStopped = false;
+        }
+    }
+
+    private static void DisableAIController(GameObject host)
+    {
+        if (host == null) return;
+        if (host.TryGetComponent<FaceSnatcherAIController>(out var controller))
+        {
+            controller.enabled = false;
+        }
+    }
+
+    private static HostState EnsureHostState(GameObject host)
+    {
+        if (host == null) return null;
+        if (!host.TryGetComponent<HostState>(out var state))
+        {
+            state = host.AddComponent<HostState>();
+        }
+        return state;
+    }
+
+    private static Transform FindChildByName(Transform root, string childName)
+    {
+        foreach (var t in root.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name == childName) return t;
+        }
+        return null;
+    }
+}

@@ -22,6 +22,8 @@ public class FaceSnatcherHumanController : MonoBehaviour
     private NavMeshAgent _agent;
     private Transform _maskSpawn;
     private FaceSnatcherCamera _camera;
+    private HostState _hostState;
+    private SnatcherManager _snatcherManager;
 
     void Awake()
     {
@@ -36,6 +38,8 @@ public class FaceSnatcherHumanController : MonoBehaviour
     {
         _maskSpawn = FindChildByName(transform, maskChildName);
         _camera = FindCameraFollowingThis();
+        _hostState = GetComponent<HostState>();
+        _snatcherManager = FindFirstObjectByType<SnatcherManager>(FindObjectsInactive.Include);
     }
 
     void Update()
@@ -89,6 +93,18 @@ public class FaceSnatcherHumanController : MonoBehaviour
             projectile = maskInstance.AddComponent<MaskProjectile>();
         }
 
+        int ownerZone = _hostState != null && _hostState.currentSnatcherZone != 0
+            ? _hostState.currentSnatcherZone
+            : (_camera != null ? _camera.zone : 0);
+
+        if (_snatcherManager != null && ownerZone != 0)
+        {
+            _snatcherManager.OnSnatcherShot(ownerZone);
+        }
+
+        projectile.ownerZone = ownerZone;
+        projectile.snatcherManager = _snatcherManager;
+        projectile.sourceHost = gameObject;
         projectile.speed = maskShootSpeed;
         projectile.lifeSeconds = maskLifeSeconds;
         projectile.ResetLifetime();
@@ -102,7 +118,7 @@ public class FaceSnatcherHumanController : MonoBehaviour
 
     private FaceSnatcherCamera FindCameraFollowingThis()
     {
-        var cams = FindObjectsOfType<FaceSnatcherCamera>(true);
+        var cams = FindObjectsByType<FaceSnatcherCamera>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         foreach (var cam in cams)
         {
             if (cam != null && cam.target == transform) return cam;
