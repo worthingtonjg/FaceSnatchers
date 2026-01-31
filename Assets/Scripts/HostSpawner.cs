@@ -29,7 +29,31 @@ public class HostSpawner : MonoBehaviour
     [Tooltip("Max distance to search for NavMesh when snapping.")]
     public float navMeshSnapRadius = 1.5f;
 
+    [Header("Camera Assignment")]
+    [Tooltip("If true, assigns each FaceSnatcher camera to a host in its zone after spawning.")]
+    public bool assignCamerasOnStart = true;
+
+    [Tooltip("If true, auto-find all FaceSnatcherCamera components in the scene.")]
+    public bool autoFindCameras = true;
+
+    [Tooltip("Explicit cameras to assign (used if auto-find is off or to override).")]
+    public List<FaceSnatcherCamera> cameras = new List<FaceSnatcherCamera>();
+
+    [Header("Player Materials")]
+    public Material redMaterial;
+    public Material yellowMaterial;
+    public Material greenMaterial;
+    public Material blueMaterial;
+
+    [Header("Human Player")]
+    [Tooltip("Zone that will be controlled by the human player (1-4).")]
+    public int humanZone = 4;
+
+    [Tooltip("If true, adds/enables FaceSnatcherHumanController on the host assigned to the human zone.")]
+    public bool enableHumanControl = true;
+
     private readonly List<WanderPoint> _points = new List<WanderPoint>();
+    private readonly List<GameObject> _spawnedHosts = new List<GameObject>();
 
     void Start()
     {
@@ -89,6 +113,7 @@ public class HostSpawner : MonoBehaviour
 
             GameObject host = Instantiate(hostPrefab, pos, rot, hostsParent);
             host.name = $"{hostPrefab.name}_{i:000}";
+            _spawnedHosts.Add(host);
 
             // Assign host's zone from the spawn point's zone (HostWander uses this to stay in-zone)
             if (host.TryGetComponent<HostWander>(out var wander))
@@ -108,6 +133,11 @@ public class HostSpawner : MonoBehaviour
                     agent.Warp(pos);
                 }
             }
+        }
+
+        if (assignCamerasOnStart)
+        {
+            AssignCamerasToHosts();
         }
     }
 
@@ -138,6 +168,7 @@ public class HostSpawner : MonoBehaviour
         {
             Destroy(hostsParent.GetChild(i).gameObject);
         }
+        _spawnedHosts.Clear();
     }
 
     private static void Shuffle<T>(IList<T> list)
@@ -147,5 +178,133 @@ public class HostSpawner : MonoBehaviour
             int j = Random.Range(0, i + 1);
             (list[i], list[j]) = (list[j], list[i]);
         }
+    }
+
+    private void AssignCamerasToHosts()
+    {
+        if (autoFindCameras)
+        {
+            cameras.Clear();
+            cameras.AddRange(FindObjectsOfType<FaceSnatcherCamera>(true));
+        }
+
+        if (cameras.Count == 0)
+        {
+            Debug.LogWarning($"{nameof(HostSpawner)}: No FaceSnatcherCamera components found to assign.");
+            return;
+        }
+
+        var zoneHosts = new Dictionary<int, List<GameObject>>();
+
+        foreach (var host in _spawnedHosts)
+        {
+            if (host == null) continue;
+            if (!host.TryGetComponent<HostWander>(out var wander)) continue;
+
+            if (!zoneHosts.TryGetValue(wander.zone, out var list))
+            {
+                list = new List<GameObject>();
+                zoneHosts[wander.zone] = list;
+            }
+            list.Add(host);
+        }
+
+        int assigned = 0;
+
+        foreach (var cam in cameras)
+        {
+            if (cam == null) continue;
+
+            if (!zoneHosts.TryGetValue(cam.zone, out var candidates) || candidates.Count == 0)
+            {
+                Debug.LogWarning($"{nameof(HostSpawner)}: No hosts available in zone {cam.zone} for camera '{cam.name}'.");
+                continue;
+            }
+
+            int pickIndex = Random.Range(0, candidates.Count);
+            var host = candidates[pickIndex];
+            candidates.RemoveAt(pickIndex);
+
+            cam.SetTarget(host.transform);
+            assigned++;
+
+            if (host.TryGetComponent<HostWander>(out var wander))
+            {
+                wander.enabled = false;
+            }
+
+            ApplyPlayerMaterial(host, cam.zone);
+            EnableMask(host);
+
+            if (enableHumanControl && cam.zone == humanZone)
+            {
+                EnsureHumanController(host);
+            }
+        }
+
+        if (assigned < 4)
+        {
+            Debug.LogWarning($"{nameof(HostSpawner)}: Assigned {assigned} camera(s). Expected 4 (one per zone 1-4).");
+        }
+    }
+
+    private void ApplyPlayerMaterial(GameObject host, int zone)
+    {
+        Material mat = zone switch
+        {
+            1 => redMaterial,
+            2 => yellowMaterial,
+            3 => greenMaterial,
+            4 => blueMaterial,
+            _ => null
+        };
+
+        if (mat == null) return;
+
+        var renderers = host.GetComponentsInChildren<Renderer>(true);
+        if (renderers.Length == 0)
+        {
+            Debug.LogWarning($"{nameof(HostSpawner)}: Host '{host.name}' has no Renderer to apply player material.");
+            return;
+        }
+
+        Transform maskRoot = FindChildByName(host.transform, "Mask");
+
+        foreach (var r in renderers)
+        {
+            if (maskRoot != null && r.transform.IsChildOf(maskRoot)) continue;
+            r.material = mat;
+        }
+    }
+
+    private void EnableMask(GameObject host)
+    {
+        var mask = FindChildByName(host.transform, "Mask");
+        if (mask == null)
+        {
+            Debug.LogWarning($"{nameof(HostSpawner)}: Host '{host.name}' has no child named 'Mask'.");
+            return;
+        }
+
+        mask.gameObject.SetActive(true);
+    }
+
+    private void EnsureHumanController(GameObject host)
+    {
+        if (!host.TryGetComponent<FaceSnatcherHumanController>(out var controller))
+        {
+            controller = host.AddComponent<FaceSnatcherHumanController>();
+        }
+
+        controller.enabled = true;
+    }
+
+    private static Transform FindChildByName(Transform root, string childName)
+    {
+        foreach (var t in root.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name == childName) return t;
+        }
+        return null;
     }
 }
