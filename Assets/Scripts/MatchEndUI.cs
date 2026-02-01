@@ -21,13 +21,22 @@ public class MatchEndUI : MonoBehaviour
         {
             snatcherManager = FindFirstObjectByType<SnatcherManager>(FindObjectsInactive.Include);
         }
+        if (root != null)
+        {
+            root.SetActive(false);
+        }
     }
 
     void Update()
     {
-        if (snatcherManager == null || root == null) return;
+        if (root == null) return;
+        if (snatcherManager == null)
+        {
+            if (root.activeSelf) root.SetActive(false);
+            return;
+        }
 
-        if (snatcherManager.matchEnded)
+        if (snatcherManager.matchStarted && snatcherManager.matchEnded)
         {
             if (!root.activeSelf) root.SetActive(true);
             if (winnerText != null)

@@ -33,6 +33,7 @@ public class SnatcherManager : MonoBehaviour
     [Min(0f)] public float respawnDelaySeconds = 3f;
 
     [Header("Match End")]
+    public bool matchStarted;
     public bool matchEnded;
     public int winningZone;
 
@@ -156,6 +157,8 @@ public class SnatcherManager : MonoBehaviour
                 slot.camera.SetTarget(host.transform);
             }
         }
+
+        matchStarted = true;
     }
 
     public void OnSnatcherShot(int snatcherZone)
@@ -573,6 +576,7 @@ public class SnatcherManager : MonoBehaviour
 
     private void CheckForMatchEnd()
     {
+        if (!matchStarted) return;
         if (matchEnded) return;
 
         var hosts = FindObjectsByType<HostState>(FindObjectsInactive.Include, FindObjectsSortMode.None);

@@ -12,6 +12,8 @@ public class HostSpawner : MonoBehaviour
     public Transform wanderPointsRoot;
 
     [Header("Spawn Settings")]
+    [Tooltip("If true, spawns automatically on Start. Turn off to trigger Spawn() manually (e.g. after a countdown).")]
+    public bool spawnOnStart = true;
     [Min(0)] public int hostCount = 50;
 
     [Tooltip("Optional parent for spawned hosts (keeps hierarchy clean).")]
@@ -63,7 +65,10 @@ public class HostSpawner : MonoBehaviour
 
     void Start()
     {
-        Spawn();
+        if (spawnOnStart)
+        {
+            Spawn();
+        }
     }
 
     [ContextMenu("Spawn Hosts Now")]
