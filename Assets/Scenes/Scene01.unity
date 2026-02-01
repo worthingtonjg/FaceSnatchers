@@ -28435,7 +28435,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &1972324412
 RectTransform:
   m_ObjectHideFlags: 0
@@ -28469,7 +28469,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.14458255, g: 0.07721205, b: 0.40251565, a: 0.8745098}
+  m_Color: {r: 0.16078432, g: 0.06666667, b: 0.12941177, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -30942,7 +30942,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   countdownSeconds: 3
   readyMessage: Get Ready...
-  readyMessageDuration: 1
+  readyMessageDuration: 3
   uiRoot: {fileID: 1972324411}
   tmpText: {fileID: 10560836}
   hostSpawner: {fileID: 0}
