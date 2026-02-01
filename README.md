@@ -1,7 +1,9 @@
 # FaceSnatchers ~ 2026 Global Gam Jam Entry
 
-Play Now: https://cypherjw.itch.io/facesnatchers
-Global Game Jam Link: https://globalgamejam.org/games/2026/face-snatchers-3
+- Play Now: https://cypherjw.itch.io/facesnatchers
+- Global Game Jam Link: https://globalgamejam.org/games/2026/face-snatchers-3
+
+# Description 
 
 You are a race of parasitic mask like creatures called Face Snatchers.  Once you've snatched a hosts face your indistinguishable from any other non-possessed.  Your goal is to be the last snatcher alive!  
 
