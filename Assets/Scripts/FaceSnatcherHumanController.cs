@@ -7,6 +7,8 @@ public class FaceSnatcherHumanController : MonoBehaviour
     [Header("Movement")]
     public float moveSpeed = 4.5f;
     public float turnSpeed = 120f;
+    public bool useNavMeshMovement = false;
+    public bool useCharacterController = true;
 
     [Header("Mask Shot")]
     public string maskChildName = "Mask";
@@ -20,6 +22,7 @@ public class FaceSnatcherHumanController : MonoBehaviour
     public bool useRawInput = true;
 
     private NavMeshAgent _agent;
+    private CharacterController _characterController;
     private Transform _maskSpawn;
     private FaceSnatcherCamera _camera;
     private HostState _hostState;
@@ -28,6 +31,7 @@ public class FaceSnatcherHumanController : MonoBehaviour
     void Awake()
     {
         _agent = GetComponent<NavMeshAgent>();
+        _characterController = GetComponent<CharacterController>();
         if (_agent != null)
         {
             _agent.updateRotation = false;
@@ -66,13 +70,20 @@ public class FaceSnatcherHumanController : MonoBehaviour
 
         Vector3 move = transform.forward * (v * moveSpeed);
 
-        if (_agent != null && _agent.enabled && _agent.isOnNavMesh)
+        if (useNavMeshMovement && _agent != null && _agent.enabled && _agent.isOnNavMesh)
         {
             _agent.Move(move * Time.deltaTime);
         }
         else
         {
-            transform.position += move * Time.deltaTime;
+            if (useCharacterController && _characterController != null && _characterController.enabled)
+            {
+                _characterController.Move(move * Time.deltaTime);
+            }
+            else
+            {
+                transform.position += move * Time.deltaTime;
+            }
         }
     }
 

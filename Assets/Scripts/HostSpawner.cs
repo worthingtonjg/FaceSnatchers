@@ -29,6 +29,9 @@ public class HostSpawner : MonoBehaviour
     [Tooltip("Max distance to search for NavMesh when snapping.")]
     public float navMeshSnapRadius = 1.5f;
 
+    [Tooltip("Vertical offset applied after snapping (helps keep capsules above ground).")]
+    public float spawnHeightOffset = 1f;
+
     [Header("Camera Assignment")]
     [Tooltip("If true, assigns each FaceSnatcher camera to a host in its zone after spawning.")]
     public bool assignCamerasOnStart = true;
@@ -111,6 +114,8 @@ public class HostSpawner : MonoBehaviour
             {
                 pos = hit.position;
             }
+
+            pos.y += spawnHeightOffset;
 
             Quaternion rot = randomYaw ? Quaternion.Euler(0f, Random.Range(0f, 360f), 0f) : p.transform.rotation;
 

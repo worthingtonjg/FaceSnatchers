@@ -645,17 +645,13 @@ public class SnatcherManager : MonoBehaviour
             controller = host.AddComponent<FaceSnatcherHumanController>();
         }
         controller.enabled = true;
+        controller.useNavMeshMovement = false;
 
         if (host.TryGetComponent<UnityEngine.AI.NavMeshAgent>(out var agent))
         {
-            if(agent.isOnNavMesh)
-            {
-                agent.isStopped = false;
-                agent.ResetPath();
-            }
-            //agent.obstacleAvoidanceType = UnityEngine.AI.ObstacleAvoidanceType.NoObstacleAvoidance;
-            agent.avoidancePriority = 0;
+            agent.enabled = false;
         }
+
     }
 
     private static void DisableHumanController(GameObject host)
@@ -668,9 +664,7 @@ public class SnatcherManager : MonoBehaviour
 
         if (host.TryGetComponent<UnityEngine.AI.NavMeshAgent>(out var agent))
         {
-            agent.isStopped = false;
-            //agent.obstacleAvoidanceType = UnityEngine.AI.ObstacleAvoidanceType.MedQualityObstacleAvoidance;
-            agent.avoidancePriority = 50;
+            agent.enabled = true;
         }
     }
 

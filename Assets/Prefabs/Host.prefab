@@ -127,6 +127,7 @@ GameObject:
   - component: {fileID: 2610173060031900495}
   - component: {fileID: 4380949549342136875}
   - component: {fileID: -2619488611724781899}
+  - component: {fileID: 63500565095569220}
   m_Layer: 6
   m_Name: Host
   m_TagString: Player
@@ -283,6 +284,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   moveSpeed: 4.5
   turnSpeed: 120
+  useNavMeshMovement: 0
+  useCharacterController: 1
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  groundRayDistance: 5
+  groundOffset: 0
   maskChildName: Mask
   maskProjectilePrefab: {fileID: 5203768328198251294, guid: 794d2861fe69b7f4ca44941d3cd4c49e, type: 3}
   maskShootSpeed: 14
@@ -401,3 +409,28 @@ AudioSource:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+--- !u!143 &63500565095569220
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7246828513198434014}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Height: 2
+  m_Radius: 0.54
+  m_SlopeLimit: 45
+  m_StepOffset: 0.3
+  m_SkinWidth: 0.08
+  m_MinMoveDistance: 0.001
+  m_Center: {x: 0, y: 0, z: 0}
