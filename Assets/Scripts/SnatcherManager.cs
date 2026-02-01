@@ -43,6 +43,12 @@ public class SnatcherManager : MonoBehaviour
     public float aiMaskShootSpeed = 14f;
     public float aiMaskLifeSeconds = 6f;
 
+    [Header("Zone Names")]
+    public string zone1Name = "Red";
+    public string zone2Name = "Yellow";
+    public string zone3Name = "Green";
+    public string zone4Name = "Blue";
+
     [Header("Cameras")]
     public bool autoFindCameras = true;
 
@@ -288,6 +294,23 @@ public class SnatcherManager : MonoBehaviour
         return Mathf.Max(0f, slot.respawnTimer);
     }
 
+    public string GetZoneName(int zone)
+    {
+        return zone switch
+        {
+            1 => zone1Name,
+            2 => zone2Name,
+            3 => zone3Name,
+            4 => zone4Name,
+            _ => $"Zone {zone}"
+        };
+    }
+
+    public int GetClaimCountForZone(int zone)
+    {
+        return CountClaimsForZone(zone);
+    }
+
     private void EnsureDefaultSlots()
     {
         if (slots.Count >= 4) return;
@@ -514,22 +537,34 @@ public class SnatcherManager : MonoBehaviour
         if (matchEnded) return;
 
         var hosts = FindObjectsByType<HostState>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-        int claimedCount = 0;
-        int total = 0;
+        bool hasNeutralUnclaimed = false;
 
         for (int i = 0; i < hosts.Length; i++)
         {
-            if (hosts[i] == null) continue;
-            if (hosts[i].isDead) continue;
-            total++;
-            if (hosts[i].claimedByZone != 0) claimedCount++;
+            var host = hosts[i];
+            if (host == null) continue;
+            if (host.isDead) continue;
+            if (host.claimedByZone != 0) continue;
+            if (host.currentSnatcherZone != 0) continue;
+            hasNeutralUnclaimed = true;
+            break;
         }
 
-        if (total == 0 || claimedCount < total) return;
+        if (hasNeutralUnclaimed) return;
 
         matchEnded = true;
         winningZone = GetWinningZoneByClaims();
         Debug.Log($"{nameof(SnatcherManager)}: Match ended. Winning zone = {winningZone}");
+
+        for (int i = 0; i < slots.Count; i++)
+        {
+            var slot = slots[i];
+            if (slot == null || slot.isHuman) continue;
+            if (slot.currentHost != null)
+            {
+                DisableAIController(slot.currentHost);
+            }
+        }
     }
 
     private int GetWinningZoneByClaims()

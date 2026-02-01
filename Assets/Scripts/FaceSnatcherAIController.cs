@@ -63,6 +63,7 @@ public class FaceSnatcherAIController : MonoBehaviour
     void Update()
     {
         if (snatcherManager == null) return;
+        if (snatcherManager.matchEnded) return;
         if (ownerZone == 0) return;
 
         _retargetTimer -= Time.deltaTime;
