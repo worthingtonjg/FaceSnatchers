@@ -16,6 +16,8 @@ public class SnatcherManager : MonoBehaviour
         public FaceSnatcherCamera camera;
         [Tooltip("Seconds remaining before host decay kills this snatcher.")]
         public float hostTimeRemaining;
+        [Tooltip("Seconds remaining before this snatcher respawns.")]
+        public float respawnTimer;
     }
 
     [Header("Slots")]
@@ -24,6 +26,13 @@ public class SnatcherManager : MonoBehaviour
     [Header("Host Decay")]
     public bool hostDecayEnabled = true;
     [Min(1f)] public float hostDecaySeconds = 12f;
+
+    [Header("Respawn")]
+    [Min(0f)] public float respawnDelaySeconds = 3f;
+
+    [Header("Match End")]
+    public bool matchEnded;
+    public int winningZone;
 
     [Header("AI")]
     public GameObject aiMaskProjectilePrefab;
@@ -39,13 +48,18 @@ public class SnatcherManager : MonoBehaviour
 
     void Update()
     {
-        if (!hostDecayEnabled) return;
-
         for (int i = 0; i < slots.Count; i++)
         {
             var slot = slots[i];
             if (slot == null) continue;
-            if (!slot.isAlive) continue;
+
+            if (!slot.isAlive)
+            {
+                TickRespawn(slot);
+                continue;
+            }
+
+            if (!hostDecayEnabled) continue;
             if (slot.currentHost == null) continue;
 
             slot.hostTimeRemaining -= Time.deltaTime;
@@ -157,6 +171,8 @@ public class SnatcherManager : MonoBehaviour
         }
 
         slot.currentHost = null;
+
+        CheckForMatchEnd();
     }
 
     public bool PossessHost(int attackerZone, HostState hostState)
@@ -212,6 +228,7 @@ public class SnatcherManager : MonoBehaviour
 
         slot.isAlive = false;
         slot.hostTimeRemaining = 0f;
+        slot.respawnTimer = respawnDelaySeconds;
 
         if (slot.currentHost != null)
         {
@@ -226,6 +243,10 @@ public class SnatcherManager : MonoBehaviour
         }
 
         slot.currentHost = null;
+        if (slot.camera != null)
+        {
+            slot.camera.SetTarget(null);
+        }
     }
 
     public void SetCurrentHost(int zone, GameObject newHost)
@@ -247,6 +268,22 @@ public class SnatcherManager : MonoBehaviour
             if (slots[i] != null && slots[i].zone == zone) return slots[i];
         }
         return null;
+    }
+
+    public bool CanRespawn(int zone)
+    {
+        if (matchEnded) return false;
+        var slot = GetSlotByZone(zone);
+        if (slot == null) return false;
+        if (slot.isAlive) return false;
+        return FindUnclaimedNeutralHost() != null;
+    }
+
+    public float GetRespawnTimeRemaining(int zone)
+    {
+        var slot = GetSlotByZone(zone);
+        if (slot == null) return 0f;
+        return Mathf.Max(0f, slot.respawnTimer);
     }
 
     private void EnsureDefaultSlots()
@@ -363,6 +400,12 @@ public class SnatcherManager : MonoBehaviour
         slot.currentHost = null;
         slot.isAlive = false;
         slot.hostTimeRemaining = 0f;
+        slot.respawnTimer = respawnDelaySeconds;
+
+        if (slot.camera != null)
+        {
+            slot.camera.SetTarget(null);
+        }
 
         // Optional: mark host dead visually or disable it later if desired.
     }
@@ -393,6 +436,129 @@ public class SnatcherManager : MonoBehaviour
         {
             renderers[i].enabled = false;
         }
+    }
+
+    private void TickRespawn(SnatcherSlot slot)
+    {
+        if (respawnDelaySeconds <= 0f || slot == null) return;
+        if (matchEnded) return;
+        if (slot.respawnTimer < 0f) return;
+
+        slot.respawnTimer -= Time.deltaTime;
+        if (slot.respawnTimer > 0f) return;
+
+        if (!TryRespawn(slot))
+        {
+            slot.respawnTimer = -1f; // no available hosts, stop trying
+        }
+    }
+
+    private bool TryRespawn(SnatcherSlot slot)
+    {
+        var host = FindUnclaimedNeutralHost();
+        if (host == null) return false;
+
+        slot.isAlive = true;
+        slot.currentHost = host.gameObject;
+        slot.hostTimeRemaining = hostDecaySeconds;
+        slot.respawnTimer = 0f;
+
+        host.SetPossessed(slot.zone);
+
+        ApplyPlayerMaterial(host.gameObject, slot.material);
+        EnableMask(host.gameObject);
+        EnableHostWander(host.gameObject, false);
+
+        if (slot.isHuman)
+        {
+            EnsureHumanController(host.gameObject);
+        }
+        else
+        {
+            EnsureAIController(host.gameObject, slot.zone);
+        }
+
+        if (slot.camera != null)
+        {
+            slot.camera.SetTarget(host.transform);
+        }
+
+        return true;
+    }
+
+    private HostState FindUnclaimedNeutralHost()
+    {
+        var hosts = FindObjectsByType<HostState>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        var candidates = new List<HostState>();
+
+        for (int i = 0; i < hosts.Length; i++)
+        {
+            var host = hosts[i];
+            if (host == null) continue;
+            if (host.isDead) continue;
+            if (host.currentSnatcherZone != 0) continue;
+            if (host.claimedByZone != 0) continue;
+            candidates.Add(host);
+        }
+
+        if (candidates.Count == 0) return null;
+
+        int index = Random.Range(0, candidates.Count);
+        return candidates[index];
+    }
+
+    private void CheckForMatchEnd()
+    {
+        if (matchEnded) return;
+
+        var hosts = FindObjectsByType<HostState>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        int claimedCount = 0;
+        int total = 0;
+
+        for (int i = 0; i < hosts.Length; i++)
+        {
+            if (hosts[i] == null) continue;
+            if (hosts[i].isDead) continue;
+            total++;
+            if (hosts[i].claimedByZone != 0) claimedCount++;
+        }
+
+        if (total == 0 || claimedCount < total) return;
+
+        matchEnded = true;
+        winningZone = GetWinningZoneByClaims();
+        Debug.Log($"{nameof(SnatcherManager)}: Match ended. Winning zone = {winningZone}");
+    }
+
+    private int GetWinningZoneByClaims()
+    {
+        int bestZone = 0;
+        int bestCount = -1;
+
+        for (int i = 0; i < slots.Count; i++)
+        {
+            var slot = slots[i];
+            if (slot == null) continue;
+            int count = CountClaimsForZone(slot.zone);
+            if (count > bestCount)
+            {
+                bestCount = count;
+                bestZone = slot.zone;
+            }
+        }
+
+        return bestZone;
+    }
+
+    private int CountClaimsForZone(int zone)
+    {
+        var hosts = FindObjectsByType<HostState>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        int count = 0;
+        for (int i = 0; i < hosts.Length; i++)
+        {
+            if (hosts[i] != null && hosts[i].claimedByZone == zone) count++;
+        }
+        return count;
     }
 
     private static void EnsureHumanController(GameObject host)

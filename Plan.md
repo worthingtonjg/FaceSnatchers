@@ -1,7 +1,7 @@
 # Face Snatchers Project Plan (72-hour game jam)
 
 ## One-Sentence Summary
-A top-down, dark city arena where four snatchers possess hosts by shooting mask projectiles miss and you die; stay too long and you die; last snatcher alive wins.
+A top-down, dark city arena where four snatchers possess hosts by shooting mask projectiles miss and you die; stay too long and you die; game ends when the last host is claimed and the player with the most claimed hosts wins.
 
 ---
 
@@ -61,11 +61,12 @@ A top-down, dark city arena where four snatchers possess hosts by shooting mask 
    - Miss  shooter dies
 4. Host decay timer:
    - Expires while possessed  host dies and snatcher dies
+   - Snatcher respawns after ~3 seconds into an unclaimed neutral host (if available)
 5. Leaving host:
    - Host survives, becomes claimed (snatcher color, no mask)
    - Shooter cannot re-possess that host again
-6. Game ends when only one snatcher remains alive.
-7. Track score stats (snatches/kills/time) and show at end.
+6. Game ends when the last host is claimed.
+7. Winner is the snatcher with the most claimed hosts (track stats and show at end).
 
 ---
 
@@ -106,7 +107,7 @@ A top-down, dark city arena where four snatchers possess hosts by shooting mask 
   - accuracy, max shot distance, reaction delay
 
 ### Milestone 6  End condition + scoring (must have)
-- Detect last snatcher alive.
+- Detect when all non-dead hosts are claimed.
 - End screen:
   - winner
   - snatches/kills/time per slot

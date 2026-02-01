@@ -18,14 +18,15 @@ This repository is a Unity game jam project for Global Game Jam. The goal is to 
   - If projectile hits a neutral host: snatcher possesses that host.
   - If projectile hits a host currently inhabited by another snatcher: that snatcher dies, attacker possesses the host.
 - Host decay: stay in a host too long -> host dies and you die (forces hopping).
+- Respawn: when a snatcher dies, they respawn after ~3 seconds in any unclaimed neutral host (if none are available, they remain dead).
 - Leaving a host:
   - Host does not die when you leave.
   - You cannot re-enter the same host again.
   - Host becomes claimed and changes to your color (no mask).
   - Claimed hosts count toward your snatched score.
 - Win condition:
-  - Game ends when only one snatcher is alive.
-  - Track stats (e.g., #snatches) for end screen; last alive wins.
+  - Game ends when the last host is claimed.
+  - The player with the most claimed hosts wins (track stats for end screen).
 
 If unsure, follow these rules as the source of truth and update both code and documentation when changing gameplay.
 

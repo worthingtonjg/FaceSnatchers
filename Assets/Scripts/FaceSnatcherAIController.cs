@@ -24,6 +24,12 @@ public class FaceSnatcherAIController : MonoBehaviour
     public float shotCooldown = 1.5f;
     public float shotMinDistance = 3f;
     public float shotMaxDistance = 10f;
+    public LayerMask lineOfSightMask = ~0;
+    [Tooltip("Half-width for multi-ray line of sight checks.")]
+    public float lineOfSightHalfWidth = 0.4f;
+    public bool drawLineOfSightRays = true;
+    public Color lineOfSightHitColor = Color.green;
+    public Color lineOfSightBlockedColor = Color.red;
 
     private NavMeshAgent _agent;
     private HostState _currentTarget;
@@ -124,6 +130,11 @@ public class FaceSnatcherAIController : MonoBehaviour
         if (maskProjectilePrefab == null) return;
         if (_currentTarget == null || !IsTargetValid(_currentTarget)) return;
 
+        if (!HasLineOfSightToTarget(_currentTarget))
+        {
+            return;
+        }
+
         snatcherManager.OnSnatcherShot(ownerZone);
 
         Transform spawn = _maskSpawn != null ? _maskSpawn : transform;
@@ -175,6 +186,44 @@ public class FaceSnatcherAIController : MonoBehaviour
         if (host.currentSnatcherZone != 0) return false;
         if (host.claimedByZone == ownerZone) return false;
         return true;
+    }
+
+    private bool HasLineOfSightToTarget(HostState host)
+    {
+        if (host == null) return false;
+
+        Vector3 origin = _maskSpawn != null ? _maskSpawn.position : transform.position + Vector3.up * 0.5f;
+        Vector3 target = host.transform.position + Vector3.up * 0.5f;
+        Vector3 dir = target - origin;
+
+        if (dir.sqrMagnitude < 0.01f) return true;
+
+        Vector3 forward = dir.normalized;
+        Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
+        Vector3 offset = right * lineOfSightHalfWidth;
+
+        bool center = RayHitsHost(origin, forward, dir.magnitude, host);
+        bool rightRay = RayHitsHost(origin + offset, forward, dir.magnitude, host);
+        bool leftRay = RayHitsHost(origin - offset, forward, dir.magnitude, host);
+
+        if (drawLineOfSightRays)
+        {
+            Debug.DrawRay(origin, forward * dir.magnitude, center ? lineOfSightHitColor : lineOfSightBlockedColor, 0f, false);
+            Debug.DrawRay(origin + offset, forward * dir.magnitude, rightRay ? lineOfSightHitColor : lineOfSightBlockedColor, 0f, false);
+            Debug.DrawRay(origin - offset, forward * dir.magnitude, leftRay ? lineOfSightHitColor : lineOfSightBlockedColor, 0f, false);
+        }
+
+        return center && rightRay && leftRay;
+    }
+
+    private bool RayHitsHost(Vector3 origin, Vector3 direction, float distance, HostState expectedHost)
+    {
+        if (Physics.Raycast(origin, direction, out RaycastHit hit, distance, lineOfSightMask, QueryTriggerInteraction.Ignore))
+        {
+            var hitHost = hit.collider.GetComponentInParent<HostState>();
+            return hitHost != null && hitHost == expectedHost;
+        }
+        return false;
     }
 
     private static Transform FindChildByName(Transform root, string childName)
