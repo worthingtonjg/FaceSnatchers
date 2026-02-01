@@ -311,6 +311,24 @@ public class SnatcherManager : MonoBehaviour
         return CountClaimsForZone(zone);
     }
 
+    public int GetRemainingUnclaimedHostCount()
+    {
+        var hosts = FindObjectsByType<HostState>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        int count = 0;
+
+        for (int i = 0; i < hosts.Length; i++)
+        {
+            var host = hosts[i];
+            if (host == null) continue;
+            if (host.isDead) continue;
+            if (host.claimedByZone != 0) continue;
+            if (host.currentSnatcherZone != 0) continue;
+            count++;
+        }
+
+        return count;
+    }
+
     private void EnsureDefaultSlots()
     {
         if (slots.Count >= 4) return;
