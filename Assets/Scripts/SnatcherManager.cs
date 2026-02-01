@@ -68,6 +68,8 @@ public class SnatcherManager : MonoBehaviour
                 HandleHostDecay(slot);
             }
         }
+
+        CheckForMatchEnd();
     }
 
     public void AssignInitialHosts(
