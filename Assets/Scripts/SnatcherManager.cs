@@ -18,6 +18,8 @@ public class SnatcherManager : MonoBehaviour
         public float hostTimeRemaining;
         [Tooltip("Seconds remaining before this snatcher respawns.")]
         public float respawnTimer;
+        [Tooltip("Last host this snatcher occupied (used for death audio on miss).")]
+        public GameObject lastHost;
     }
 
     [Header("Slots")]
@@ -162,6 +164,11 @@ public class SnatcherManager : MonoBehaviour
         if (slot == null || slot.currentHost == null) return;
 
         var host = slot.currentHost;
+        if (slot.isHuman && host.TryGetComponent<HostAudio>(out var hostAudio))
+        {
+            hostAudio.PlayLeaveHost();
+        }
+        slot.lastHost = host;
         var hostState = EnsureHostState(host);
         hostState.ClearPossessed();
         hostState.SetClaimed(snatcherZone);
@@ -179,6 +186,7 @@ public class SnatcherManager : MonoBehaviour
         }
 
         slot.currentHost = null;
+        slot.respawnTimer = respawnDelaySeconds;
 
         CheckForMatchEnd();
     }
@@ -240,6 +248,10 @@ public class SnatcherManager : MonoBehaviour
 
         if (slot.currentHost != null)
         {
+            if (slot.isHuman && slot.currentHost.TryGetComponent<HostAudio>(out var hostAudio))
+            {
+                hostAudio.PlayDeath();
+            }
             if (slot.isHuman)
             {
                 DisableHumanController(slot.currentHost);
@@ -249,8 +261,13 @@ public class SnatcherManager : MonoBehaviour
                 DisableAIController(slot.currentHost);
             }
         }
+        else if (slot.isHuman && slot.lastHost != null && slot.lastHost.TryGetComponent<HostAudio>(out var lastHostAudio))
+        {
+            lastHostAudio.PlayDeath();
+        }
 
         slot.currentHost = null;
+        slot.lastHost = null;
         if (slot.camera != null)
         {
             slot.camera.SetTarget(null);
@@ -459,12 +476,16 @@ public class SnatcherManager : MonoBehaviour
 
         if (host.TryGetComponent<HostWander>(out var wander))
         {
+            wander.ForceReleaseReservation();
             wander.enabled = false;
         }
 
         if (host.TryGetComponent<UnityEngine.AI.NavMeshAgent>(out var agent))
         {
-            agent.isStopped = true;
+            if (agent.isOnNavMesh)
+            {
+                agent.isStopped = true;
+            }
             agent.enabled = false;
         }
 
@@ -627,9 +648,12 @@ public class SnatcherManager : MonoBehaviour
 
         if (host.TryGetComponent<UnityEngine.AI.NavMeshAgent>(out var agent))
         {
-            agent.isStopped = false;
-            agent.ResetPath();
-            agent.obstacleAvoidanceType = UnityEngine.AI.ObstacleAvoidanceType.NoObstacleAvoidance;
+            if(agent.isOnNavMesh)
+            {
+                agent.isStopped = false;
+                agent.ResetPath();
+            }
+            //agent.obstacleAvoidanceType = UnityEngine.AI.ObstacleAvoidanceType.NoObstacleAvoidance;
             agent.avoidancePriority = 0;
         }
     }
@@ -645,7 +669,7 @@ public class SnatcherManager : MonoBehaviour
         if (host.TryGetComponent<UnityEngine.AI.NavMeshAgent>(out var agent))
         {
             agent.isStopped = false;
-            agent.obstacleAvoidanceType = UnityEngine.AI.ObstacleAvoidanceType.MedQualityObstacleAvoidance;
+            //agent.obstacleAvoidanceType = UnityEngine.AI.ObstacleAvoidanceType.MedQualityObstacleAvoidance;
             agent.avoidancePriority = 50;
         }
     }

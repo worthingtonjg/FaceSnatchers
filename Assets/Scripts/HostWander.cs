@@ -25,7 +25,7 @@ public class HostWander : MonoBehaviour
     public float travelTimeoutSeconds = 6f;
 
     [Tooltip("Require complete path to the reserved point.")]
-    public bool requireCompletePath = true;
+    public bool requireCompletePath = false;
 
     [Header("Zone")]
     [Tooltip("Host will only reserve/visit WanderPoints whose zone matches this value.")]
@@ -35,6 +35,8 @@ public class HostWander : MonoBehaviour
     private readonly List<WanderPoint> _points = new();
     private WanderPoint _reservedPoint;
     private Coroutine _loop;
+    [Header("Debug")]
+    public string debugState;
 
     void Awake()
     {
@@ -46,6 +48,12 @@ public class HostWander : MonoBehaviour
         CachePoints();
         _agent.avoidancePriority = Random.Range(30, 70); // helps with crowding
         _loop = StartCoroutine(WanderLoop());
+    }
+
+    void OnEnable()
+    {
+        ReleaseReservedPoint();
+        if (_loop == null)  _loop = StartCoroutine(WanderLoop());
     }
 
     void OnDisable()
@@ -82,6 +90,7 @@ public class HostWander : MonoBehaviour
 
     private IEnumerator WanderLoop()
     {
+        debugState = "Init";
         yield return null;
 
         if (_points.Count == 0) yield break;
@@ -89,6 +98,7 @@ public class HostWander : MonoBehaviour
         // Ensure agent starts on navmesh
         if (_agent.enabled && !_agent.isOnNavMesh)
         {
+            debugState = "WarpToNavMesh";
             if (NavMesh.SamplePosition(transform.position, out var hit, 5f, NavMesh.AllAreas))
                 _agent.Warp(hit.position);
         }
@@ -97,13 +107,15 @@ public class HostWander : MonoBehaviour
         {
             if (!_agent.enabled || !_agent.isOnNavMesh)
             {
+                debugState = "WaitingForNavMesh";
                 yield return null;
                 continue;
             }
 
             // Pick + reserve an available point IN THIS HOST'S ZONE
-            if (!TryPickAndReservePointInZone(out _reservedPoint))
+            if (!TryPickAndReservePointInZone(out _reservedPoint, out string failReason))
             {
+                debugState = $"PickFailed: {failReason}";
                 yield return null;
                 continue;
             }
@@ -113,11 +125,13 @@ public class HostWander : MonoBehaviour
             // Optional: verify path is complete
             if (requireCompletePath && !HasCompletePath(dest))
             {
+                debugState = "PathIncomplete";
                 ReleaseReservedPoint();
                 yield return null;
                 continue;
             }
 
+            debugState = "Traveling";
             _agent.isStopped = false;
             _agent.SetDestination(dest);
 
@@ -141,20 +155,32 @@ public class HostWander : MonoBehaviour
                 yield return null;
             }
 
-            // Stop and release point so someone else can use it
-            _agent.ResetPath();
-            _agent.isStopped = true;
-            ReleaseReservedPoint();
+            debugState = "ArrivedOrTimeout";
 
-            // Pause
+            // Stop
+            if (_agent.isOnNavMesh)
+            {
+                _agent.isStopped = true;
+                _agent.ResetPath();
+            }
+
+            // Pause while still reserving the point to avoid pileups
+            debugState = "Waiting";
             yield return new WaitForSeconds(Random.Range(waitMinSeconds, waitMaxSeconds));
+
+            // Release after waiting
+            ReleaseReservedPoint();
         }
     }
 
-    private bool TryPickAndReservePointInZone(out WanderPoint reserved)
+    private bool TryPickAndReservePointInZone(out WanderPoint reserved, out string failReason)
     {
         reserved = null;
+        failReason = "";
         if (_points.Count == 0) return false;
+        bool sawZone = false;
+        bool sawAvailable = false;
+        bool sawFarEnough = false;
 
         // Pass 1: must match zone + available + min distance
         for (int i = 0; i < pickAttempts; i++)
@@ -162,10 +188,13 @@ public class HostWander : MonoBehaviour
             var candidate = _points[Random.Range(0, _points.Count)];
             if (candidate == null) continue;
             if (candidate.zone != zone) continue;
+            sawZone = true;
             if (!candidate.IsAvailable) continue;
+            sawAvailable = true;
 
             float dist = Vector3.Distance(transform.position, candidate.transform.position);
             if (dist < minDestinationDistance) continue;
+            sawFarEnough = true;
 
             if (candidate.TryReserve())
             {
@@ -180,7 +209,9 @@ public class HostWander : MonoBehaviour
             var candidate = _points[Random.Range(0, _points.Count)];
             if (candidate == null) continue;
             if (candidate.zone != zone) continue;
+            sawZone = true;
             if (!candidate.IsAvailable) continue;
+            sawAvailable = true;
 
             if (candidate.TryReserve())
             {
@@ -188,6 +219,11 @@ public class HostWander : MonoBehaviour
                 return true;
             }
         }
+
+        if (!sawZone) failReason = $"No points in zone {zone}";
+        else if (!sawAvailable) failReason = $"All points in zone {zone} are reserved";
+        else if (!sawFarEnough) failReason = "All available points too close";
+        else failReason = "Reservation failed";
 
         return false;
     }
@@ -206,5 +242,10 @@ public class HostWander : MonoBehaviour
             _reservedPoint.Release();
             _reservedPoint = null;
         }
+    }
+
+    public void ForceReleaseReservation()
+    {
+        ReleaseReservedPoint();
     }
 }
